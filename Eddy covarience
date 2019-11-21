@@ -1,0 +1,122 @@
+require(stringr)
+
+muka <- read.csv('Data/rearrange data from eddy.csv')
+
+t <- str_pad(muka$time, width=5, side="left", pad="0")
+
+
+date <- paste(muka$date,t)
+muka$date<- as.POSIXct(date, format = "%d/%m/%Y %H:%M", tz = "Asia/Kuala_Lumpur")
+muka <- muka[,-2]
+
+
+plot(muka$wind_speed)
+muka$wind_speed[muka$wind_speed >5]<-NA
+plot(muka$wind_speed)
+
+
+muka$dir_90 = muka$wind_dir
+muka$dir_90[muka$dir_90 > 90 ]<- NA
+muka$radian_wd = muka$dir_90 
+muka$radian_wd <- (muka$dir_90*pi)/180
+
+#Remove qc=2, wind direction > 90, rain >0
+muka$co2_flux[muka$wind_dir > 90 ]<- NA
+muka$co2_flux[muka$qc_co2_flux == 2] <- NA
+muka$co2_flux[muka$HourlyPrecipMM >0] <- NA
+muka$co2_flux[muka$co2_flux >0.5] <- NA
+muka$co2_flux[muka$co2_flux < -0.5] <- NA
+muka$u.[muka$wind_dir > 90] <- NA
+muka$co2_mole_fraction[muka$wind_dir>90] <- NA
+muka$co2_mixing_ratio[muka$wind_dir> 90] <- NA
+muka$co2_mixing_ratio[muka$co2_mixing_ratio < 0] <- NA
+muka$co2_mole_fraction[muka$co2_mole_fraction < 0] <-NA
+muka$air_pressure[muka$wind_dir> 90] <- NA
+muka$x_90.[muka$wind_dir> 90] <- NA
+
+plot(muka$co2_flux)
+which.max(muka$co2_flux)
+which.min(muka$co2_flux)
+
+plot(muka$co2_mole_fraction)
+which.max(muka$co2_mole_fraction)
+which.min(muka$co2_mole_fraction)
+
+
+
+
+
+#### Grouping data monthly ####
+library(dplyr)
+by_monthly_grp_data_mean <- muka %>% 
+  mutate(time_stamp=as.POSIXct(date)) %>%
+  group_by(month=format(as.POSIXlt(cut(time_stamp,breaks='month')),'%Y %m')) %>%
+  summarise(co2_flux=mean(co2_flux,na.rm=TRUE),
+            co2_mixing_ratio=mean(co2_mixing_ratio,na.rm=TRUE),
+            co2_mole_fraction=mean(co2_mole_fraction,na.rm=TRUE),
+            air_pressure=mean(air_pressure,na.rm = TRUE),
+            U_insitu =mean(wind_speed,na.rm=TRUE),
+            u. =mean(u.,na.rm = TRUE),
+            x_90. = mean(x_90.,na.rm = TRUE))
+by_monthly_grp_data_sd <- muka %>% 
+  mutate(time_stamp=as.POSIXct(date)) %>%
+  group_by(month=format(as.POSIXlt(cut(time_stamp,breaks='month')),'%Y %m')) %>%
+  summarise(co2_flux_sd=sd(co2_flux,na.rm=TRUE),
+            co2_mixing_ratio_sd=sd(co2_mixing_ratio,na.rm=TRUE),
+            co2_mole_fraction_sd=sd(co2_mole_fraction,na.rm=TRUE),
+            air_pressure_sd=sd(air_pressure,na.rm = TRUE),
+            U_insitu_sd =sd(wind_speed,na.rm=TRUE),
+            radian_wd_sd =sd(radian_wd, na.rm = TRUE),
+            u._sd =sd(u.,na.rm = TRUE),
+            x_90._sd = sd(x_90.,na.rm = TRUE)) 
+
+by_monthly_grp_data <- merge(by_monthly_grp_data_mean, by_monthly_grp_data_sd,by='month')
+rm(by_monthly_grp_data_mean,by_monthly_grp_data_sd)
+month <- paste(by_monthly_grp_data$month,"15"," 00:00:00")
+by_monthly_grp_data <- cbind(month,by_monthly_grp_data)
+month <- as.POSIXct(month, format = "%Y %m %d %H:%M:%S", tz = 'Asia/Kuala_Lumpur')
+by_monthly_grp_data <- cbind(month,by_monthly_grp_data)
+by_monthly_grp_data <- by_monthly_grp_data[,-2]
+
+monthly_data<- by_monthly_grp_data
+
+lat_site <-NA
+lat_site = 5.468333
+monthly_data<-cbind(monthly_data,lat_site)
+
+lon_site <-NA
+lon_site = 100.2002778
+monthly_data<-cbind(monthly_data,lon_site)
+
+
+
+PP_air <- NA
+
+co2_mF <- monthly_data$co2_mole_fraction*10^-6  #convert into mol/mol
+PP_air= co2_mF*monthly_data$air_pressure
+PP_air <- PP_air * 0.001 #convert to kPa
+#convert PP_air into micro atm
+PP_air = (PP_air/101.325)*10^6
+monthly_data <- cbind(monthly_data, PP_air)
+
+####import chlor data ####
+chl <- read.csv('DATA/monthly_data_chlor.csv')
+chl<- chl[-c(40, 41, 42, 43, 44), ] 
+
+chlor_a <- NA
+chlor_a <- chl$CHLOR
+monthly_data <- cbind(monthly_data, chlor_a)
+
+
+
+####import SST data ####
+
+TS <- read.csv('DATA/monthly_data_sst.csv')
+TS <- TS[-c(40, 41, 42, 43, 44), ] 
+
+SEA_SURFACE <- NA
+SEA_SURFACE <- TS$SST
+monthly_data <- cbind(monthly_data, SEA_SURFACE)
+
+
+
